@@ -1,6 +1,6 @@
 # Remedi4J
 
-Remedi4J provides a Java library for interacting with REMEDI.
+Remedi4J provides a Java library for interacting with [REMEDI](https://github.com/ivan-zapreev/Distributed-Translation-Infrastructure).
 Primarily, it provides data structures and utilities for communicating via the WebSocket
 communication protocol supported by REMEDI.
 A simple client is also provided for sending and receiving requests from REMEDI.

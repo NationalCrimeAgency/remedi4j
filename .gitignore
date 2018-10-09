@@ -1,3 +1,6 @@
 .idea/
 target/
 *.iml
+pom.xml.*
+release.properties
+

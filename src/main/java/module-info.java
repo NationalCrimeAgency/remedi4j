@@ -28,7 +28,7 @@ module uk.gov.nca.remedi4j {
   requires com.fasterxml.jackson.annotation;
   requires com.fasterxml.jackson.core;
   requires com.fasterxml.jackson.databind;
-  requires icu4j;
+  requires com.ibm.icu;
   requires java.net.http;
   requires slf4j.api;
 }

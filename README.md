@@ -1,3 +1,5 @@
+# This project is currently unmaintained. Please use with caution.
+
 # Remedi4J
 
 Remedi4J provides a Java library for interacting with [REMEDI](https://github.com/ivan-zapreev/Distributed-Translation-Infrastructure).

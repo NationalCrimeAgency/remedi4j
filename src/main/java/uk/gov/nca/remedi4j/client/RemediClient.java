@@ -38,6 +38,7 @@ import uk.gov.nca.remedi4j.data.SupportedLanguageRequest;
 import uk.gov.nca.remedi4j.data.SupportedLanguageResponse;
 import uk.gov.nca.remedi4j.data.TranslationRequest;
 import uk.gov.nca.remedi4j.data.TranslationResponse;
+import uk.gov.nca.remedi4j.exceptions.RemediRuntimeException;
 import uk.gov.nca.remedi4j.utils.MessageUtils;
 
 /**
@@ -45,9 +46,9 @@ import uk.gov.nca.remedi4j.utils.MessageUtils;
  */
 public class RemediClient implements AutoCloseable{
 
-  private WebSocket wsPreProcessingServer;
+  private WebSocket wsPreProcessingServer = null;
   private WebSocket wsTranslationServer;
-  private WebSocket wsPostProcessingServer;
+  private WebSocket wsPostProcessingServer = null;
   private RemediListener listener = new RemediListener();
 
   private static final long INITIAL_WAIT_TIME = 250;
@@ -56,25 +57,39 @@ public class RemediClient implements AutoCloseable{
   private static final Logger LOGGER = LoggerFactory.getLogger(RemediClient.class);
 
   /**
+   * Initialize a new client with connections to the just the REMEDI translation server
+   *
+   * @param translationServer
+   *    URI of the translation server or load balancer
+   */
+  public RemediClient(URI translationServer){
+    this(null, translationServer, null);
+  }
+
+  /**
    * Initialize a new client with connections to the various REMEDI servers
    *
    * @param preProcessingServer
-   *    URI of the pre-processing server
+   *    URI of the pre-processing server (can be null)
    * @param translationServer
-   *    URI of the translation server or load balancer
+   *    URI of the translation server or load balancer (must not be null)
    * @param postProcessingServer
-   *    URI of the post-processing server
+   *    URI of the post-processing server (can be null)
    */
   public RemediClient(URI preProcessingServer, URI translationServer, URI postProcessingServer){
-    wsPreProcessingServer = HttpClient.newHttpClient()
+    if(preProcessingServer != null)
+      wsPreProcessingServer = HttpClient.newHttpClient()
         .newWebSocketBuilder()
         .buildAsync(preProcessingServer, listener)
         .join();
+
     wsTranslationServer = HttpClient.newHttpClient()
         .newWebSocketBuilder()
         .buildAsync(translationServer, listener)
         .join();
-    wsPostProcessingServer = HttpClient.newHttpClient()
+
+    if(postProcessingServer != null)
+      wsPostProcessingServer = HttpClient.newHttpClient()
         .newWebSocketBuilder()
         .buildAsync(postProcessingServer, listener)
         .join();
@@ -129,10 +144,27 @@ public class RemediClient implements AutoCloseable{
 
     LOGGER.info("Translating text ({} characters) from {} to {}", text.length(), sourceLanguage, targetLanguage);
 
-    return preProcess(sourceLanguage, text)
-        .thenCompose(r -> translate(r.getLanguage(), targetLanguage, r.getText()))
-        .thenCompose(r -> postProcess(targetLanguage, r.assembleTargetData(" ", true)))
-        .thenApply(ProcessorResponse::getText);
+    if(wsPreProcessingServer == null && wsPostProcessingServer == null){
+      //Just translation
+      return translate(sourceLanguage, targetLanguage, text)
+          .thenApply(r -> r.assembleTargetData(" ", true));
+    }else if(wsPreProcessingServer == null){
+      //Translation and post-processing
+      return translate(sourceLanguage, targetLanguage, text)
+          .thenCompose(r -> postProcess(targetLanguage, r.assembleTargetData(" ", true)))
+          .thenApply(ProcessorResponse::getText);
+    }else if(wsPostProcessingServer == null){
+      //Pre-processing and translation
+      return preProcess(sourceLanguage, text)
+          .thenCompose(r -> translate(r.getLanguage(), targetLanguage, r.getText()))
+          .thenApply(r -> r.assembleTargetData(" ", true));
+    }else {
+      //Pre-processing, translation and post-processing
+      return preProcess(sourceLanguage, text)
+          .thenCompose(r -> translate(r.getLanguage(), targetLanguage, r.getText()))
+          .thenCompose(r -> postProcess(targetLanguage, r.assembleTargetData(" ", true)))
+          .thenApply(ProcessorResponse::getText);
+    }
   }
 
   /**
@@ -147,6 +179,9 @@ public class RemediClient implements AutoCloseable{
    *    The response from the pre-processor
    */
   public CompletableFuture<PreProcessorResponse> preProcess(String language, String text) {
+    if(wsPreProcessingServer == null)
+      throw new RemediRuntimeException("Pre-processing server has not been configured for this client");
+
     return CompletableFuture.supplyAsync(() -> {
       //Pre-processing
       LOGGER.info("Beginning pre-processing of request");
@@ -217,6 +252,9 @@ public class RemediClient implements AutoCloseable{
    *    The response from the post-processor
    */
   public CompletableFuture<PostProcessorResponse> postProcess(String language, String text) {
+    if(wsPostProcessingServer == null)
+      throw new RemediRuntimeException("Post-processing server has not been configured for this client");
+
     return CompletableFuture.supplyAsync(() -> {
       //Post-processing
       LOGGER.info("Beginning post-processing of request");
@@ -267,7 +305,17 @@ public class RemediClient implements AutoCloseable{
 
   @Override
   public void close() {
+    if(wsPreProcessingServer != null){
+      wsPreProcessingServer.sendClose(1000, "Client closed");
+      wsPreProcessingServer = null;
+    }
+
     wsTranslationServer.sendClose(1000, "Client closed");
     wsTranslationServer = null;
+
+    if(wsPostProcessingServer != null){
+      wsPostProcessingServer.sendClose(1000, "Client closed");
+      wsPostProcessingServer = null;
+    }
   }
 }

@@ -77,22 +77,27 @@ public class RemediClient implements AutoCloseable{
    *    URI of the post-processing server (can be null)
    */
   public RemediClient(URI preProcessingServer, URI translationServer, URI postProcessingServer){
-    if(preProcessingServer != null)
+    if(translationServer == null)
+      throw new IllegalArgumentException("Translation server URI must be provided");
+
+    if(preProcessingServer != null) {
       wsPreProcessingServer = HttpClient.newHttpClient()
-        .newWebSocketBuilder()
-        .buildAsync(preProcessingServer, listener)
-        .join();
+          .newWebSocketBuilder()
+          .buildAsync(preProcessingServer, listener)
+          .join();
+    }
 
     wsTranslationServer = HttpClient.newHttpClient()
         .newWebSocketBuilder()
         .buildAsync(translationServer, listener)
         .join();
 
-    if(postProcessingServer != null)
+    if(postProcessingServer != null) {
       wsPostProcessingServer = HttpClient.newHttpClient()
-        .newWebSocketBuilder()
-        .buildAsync(postProcessingServer, listener)
-        .join();
+          .newWebSocketBuilder()
+          .buildAsync(postProcessingServer, listener)
+          .join();
+    }
   }
 
   /**
@@ -179,8 +184,10 @@ public class RemediClient implements AutoCloseable{
    *    The response from the pre-processor
    */
   public CompletableFuture<PreProcessorResponse> preProcess(String language, String text) {
-    if(wsPreProcessingServer == null)
-      throw new RemediRuntimeException("Pre-processing server has not been configured for this client");
+    if(wsPreProcessingServer == null) {
+      throw new RemediRuntimeException(
+          "Pre-processing server has not been configured for this client");
+    }
 
     return CompletableFuture.supplyAsync(() -> {
       //Pre-processing
@@ -252,8 +259,10 @@ public class RemediClient implements AutoCloseable{
    *    The response from the post-processor
    */
   public CompletableFuture<PostProcessorResponse> postProcess(String language, String text) {
-    if(wsPostProcessingServer == null)
-      throw new RemediRuntimeException("Post-processing server has not been configured for this client");
+    if(wsPostProcessingServer == null) {
+      throw new RemediRuntimeException(
+          "Post-processing server has not been configured for this client");
+    }
 
     return CompletableFuture.supplyAsync(() -> {
       //Post-processing
@@ -306,15 +315,15 @@ public class RemediClient implements AutoCloseable{
   @Override
   public void close() {
     if(wsPreProcessingServer != null){
-      wsPreProcessingServer.sendClose(1000, "Client closed");
+      wsPreProcessingServer.sendClose(WebSocket.NORMAL_CLOSURE, "Client closed");
       wsPreProcessingServer = null;
     }
 
-    wsTranslationServer.sendClose(1000, "Client closed");
+    wsTranslationServer.sendClose(WebSocket.NORMAL_CLOSURE, "Client closed");
     wsTranslationServer = null;
 
     if(wsPostProcessingServer != null){
-      wsPostProcessingServer.sendClose(1000, "Client closed");
+      wsPostProcessingServer.sendClose(WebSocket.NORMAL_CLOSURE, "Client closed");
       wsPostProcessingServer = null;
     }
   }
